@@ -122,6 +122,40 @@ func (c *conn) serve() {
 					pc.SendError(rid, "false")
 				}
 			}
+		case: "join":
+			// join 123 1.2.3.4:999
+			who := parts[1]
+			addr := parts[2]
+			rlogger.Logf("membership requested for %s", addr)
+
+			key := "/j/junta/members/" + who
+			mut, err := store.EncodeSet(key, addr)
+			if err != nil {
+				rlogger.Log(err)
+				pc.SendError(rid, err.String())
+			} else {
+				rlogger.Logf("propose %q", mut)
+				seqn, v := c.s.mg.Propose(mut)
+				if v == mut {
+					rlogger.Logf("good")
+					// get snap
+					buf := new(bytes.Buffer)
+					snapSeq, err := c.st.SnapshotSync(seqn + alpha, buf)
+					if err != nil {
+						panic(err)
+					}
+					// get hist
+					hist := c.s.mg.History(seqn, snapSeqn)
+					histBuf := new(bytes.Buffer)
+					// TODO: Check for err
+					gob.NewEncoder(dbuf).Encode(hist)
+
+					pc.SendResponse(rid, seqn + alpha, histBuf.String(), buf.String())
+				} else {
+					rlogger.Logf("bad")
+					pc.SendError(rid, "false")
+				}
+			}
 		}
 	}
 }

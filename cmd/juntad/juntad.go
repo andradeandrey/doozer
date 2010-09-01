@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"strconv"
 
 	"junta/paxos"
 	"junta/store"
@@ -22,26 +23,76 @@ func main() {
 	flag.Parse()
 
 	util.LogWriter = os.Stderr
-
-	outs := make(chan paxos.Msg)
 	self := util.RandString(160)
 
-	st := store.New()
-	rg := paxos.NewRegistrar(self, st, alpha)
+	if *attachAddr {
+		c, err := net.Dial("tcp", *attachAddr, nil)
+		if err != nil {
+			panic(err)
+		}
 
-	addMember(st, self, *listenAddr)
+		pc := proto.NewConn(c)
 
-	mg := paxos.NewManager(2, rg, paxos.ChanPutCloser(outs))
-	go func() {
-		panic(server.ListenAndServe(*listenAddr, st, mg))
-	}()
+		rid, err := pc.SendRequest("join", self)
+		if err != nil {
+			panic(err)
+		}
 
-	go func() {
-		panic(server.ListenAndServeUdp(*listenAddr, mg, outs))
-	}()
+		parts, err := pc.ReadResponse(rid)
+		if err != nil {
+			panic(err)
+		}
 
-	for {
-		st.Apply(mg.Recv())
+		if len(parts) < 3 {
+			panic("not enough information to join!")
+		}
+
+		seqn, err := strconv.Btoui64(parts[0], 10)
+		if err != nil {
+			panic(err)
+		}
+
+		hist := parts[1]
+		snap := parts[2]
+
+		st := store.New()
+		rg := paxos.NewRegistrar(self, st, alpha)
+
+		st.Apply(1, snap)
+		rg.SetHistory(seqn, history) //TODO
+
+		mg := paxos.NewManager(2, rg, paxos.ChanPutCloser(outs))
+		go func() {
+			panic(server.ListenAndServe(*listenAddr, st, mg))
+		}()
+
+		go func() {
+			panic(server.ListenAndServeUdp(*listenAddr, mg, outs))
+		}()
+
+		for {
+			st.Apply(mg.Recv())
+		}
+	} else {
+		outs := make(chan paxos.Msg)
+
+		st := store.New()
+		rg := paxos.NewRegistrar(self, st, alpha)
+
+		addMember(st, self, *listenAddr)
+
+		mg := paxos.NewManager(2, rg, paxos.ChanPutCloser(outs))
+		go func() {
+			panic(server.ListenAndServe(*listenAddr, st, mg))
+		}()
+
+		go func() {
+			panic(server.ListenAndServeUdp(*listenAddr, mg, outs))
+		}()
+
+		for {
+			st.Apply(mg.Recv())
+		}
 	}
 }
 
