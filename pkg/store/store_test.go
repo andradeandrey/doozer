@@ -1,14 +1,14 @@
 package store
 
 import (
-	"container/heap"
 	"container/vector"
 	"junta/assert"
+	"os"
 	"testing"
 )
 
 const (
-	Watch = uint(1 << iota)
+	Wait = uint(1 << iota)
 	Set
 )
 
@@ -33,17 +33,15 @@ func (r req) Less(y interface{}) bool {
 type Store struct {
 	seqn    uint64
 	reqCh   chan req
-	watches *vector.Vector
+	waits *vector.Vector
 }
 
 func New() *Store {
 	s := &Store{
 		seqn:    0,
 		reqCh:   make(chan req),
-		watches: new(vector.Vector),
+		waits: new(vector.Vector),
 	}
-
-	heap.Init(s.watches)
 
 	go s.process()
 
@@ -55,39 +53,61 @@ func (s *Store) Close() {
 }
 
 func (s *Store) process() {
+	// NOTE:  There should never be an error in here
 	for r := range s.reqCh {
-		if r.mask & Watch != 0 {
-			heap.Push(s.watches, r)
+		if r.mask & Wait != 0 {
+			s.waits.Push(r)
 		}
 
 		if r.mask & Set != 0 {
 			s.seqn++
 			// TODO: Create the path and set the body
-			s.watches.Do(func(x interface{}) {
-				w := x.(req)
+			waits := []interface(s.waits)
+			for n, x := range waits {
+				// Lazily GC old waits
 				if w.seqn <= s.seqn {
+					w := x.(req)
 					w.ch <- Reply{s.seqn, r.path, r.body}
+					if w.mask | Once != 0 {
+						s.waits.Delete(n)
+					}
 				}
-			})
+			}
 		}
 	}
 }
 
-func (s *Store) Watch(seqn uint64, path string, ch chan<- Reply) {
-	s.reqCh <- req{seqn, path, "", Watch, ch}
+func (s *Store) Req(seqn uint64, path, body string, mask uint, ch chan<- Reply) {
+	s.reqCh <- req{seqn, path, body, mask, ch}
 }
 
-func (s *Store) Set(seqn uint64, path, body string, ch chan<- Reply) {
-	s.reqCh <- req{seqn, path, body, Watch | Set, ch}
+func (s *Store) Wait(seqn uint64, path string) (Reply, os.Error) {
+	ch := make(chan Reply)
+	s.Req(seqn, path, "", Wait, ch)
+	return <-ch, nil
 }
+
+func (s *Store) Set(seqn uint64, path, body string) (Reply, os.Error) {
+	ch := make(chan Reply)
+	s.Req(seqn, path, body, Wait | Once | Set, ch)
+	return <-ch, nil
+}
+
 
 // Testing
 
-func TestStoreSet(t *testing.T) {
+func TestStoreSetSimple(t *testing.T) {
 	s := New()
-	ch := make(chan Reply)
-	s.Set(1, "/foo", "bar", ch)
 
-	got := <-ch
+	var got Reply
+
+	got, _ = s.Set(1, "/foo", "bar")
 	assert.Equal(t, uint64(1), got.seqn)
+	assert.Equal(t, "/foo", got.path)
+	assert.Equal(t, "bar", got.body)
+
+	got, _ = s.Set(2, "/foo", "rab")
+	assert.Equal(t, uint64(2), got.seqn)
+	assert.Equal(t, "/foo", got.path)
+	assert.Equal(t, "rab", got.body)
 }
