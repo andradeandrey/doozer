@@ -10,6 +10,7 @@ import (
 const (
 	Wait = uint(1 << iota)
 	Set
+	Once
 )
 
 type Reply struct {
@@ -62,11 +63,9 @@ func (s *Store) process() {
 		if r.mask & Set != 0 {
 			s.seqn++
 			// TODO: Create the path and set the body
-			waits := []interface(s.waits)
-			for n, x := range waits {
-				// Lazily GC old waits
+			for n, x := range *s.waits {
+				w := x.(req)
 				if w.seqn <= s.seqn {
-					w := x.(req)
 					w.ch <- Reply{s.seqn, r.path, r.body}
 					if w.mask | Once != 0 {
 						s.waits.Delete(n)
