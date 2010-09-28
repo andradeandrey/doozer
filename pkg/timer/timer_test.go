@@ -81,10 +81,10 @@ func (t *Timer) process() {
 			x := Tick{e.Path, at}
 			heap.Push(ticks, x)
 		case <-ticker.C:
-			secs := time.Seconds()
-			logger.Logf("secs (%d)", secs)
+			ns := time.Nanoseconds()
+			logger.Logf("ns (%d)", ns)
 			logger.Logf("peek (%v)", peek())
-			for next := peek() ; next.At <= secs; next = peek() {
+			for next := peek() ; next.At <= ns; next = peek() {
 				logger.Logf("ticked %#v", next)
 				heap.Pop(ticks)
 				t.C <- next
@@ -116,7 +116,7 @@ func TestOneshotTimer(t *testing.T) {
 	path := "/j/timer/foo/bar"
 	muta := store.MustEncodeSet(
 		path,
-		strconv.Itoa64(time.Seconds() + 5),
+		strconv.Itoa64(time.Nanoseconds() + (oneSecond * 5)),
 		store.Clobber,
 	)
 
