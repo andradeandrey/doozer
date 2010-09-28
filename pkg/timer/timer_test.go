@@ -1,70 +1,127 @@
 package timer
 
 import (
+	"container/heap"
+	"container/vector"
 	"junta/store"
-	"log"
+	"junta/util"
+	"math"
+	"os"
+	"strconv"
 	"testing"
 	"time"
 )
 
 const (
-	oneSecond = 1000000000
+	oneSecond = 1e9
 )
 
-type Timer struct {
-	C chan string
-
-	st *store.Store
-	tk *time.Ticker
+type Tick struct {
+	Path string
+	At int64
 }
 
-func New(st *store.Store) *Timer {
+type Timer struct {
+	// A name for the timer
+	Name string
+
+	// Watches ticked are sent here
+	C chan Tick
+
+	st *store.Store
+	events chan store.Event
+}
+
+func New(name string, st *store.Store) *Timer {
 	t := &Timer{
-		make(chan string),
+		name,
+		make(chan Tick),
 		st,
-		time.NewTicker(1),
+		make(chan store.Event),
 	}
+
 	go t.process()
+
 	return t
 }
 
 func (t *Timer) process() {
+	logger := util.NewLogger("timer (%s)", t.Name)
+
+	ticks := new(vector.Vector)
+	heap.Init(ticks)
+
+	peek := func() Tick {
+		if ticks.Len() == 0 {
+			return Tick{At:math.MaxInt64}
+		}
+		return ticks.At(0).(Tick)
+	}
+
 	// Start the timer
-	tick := time.NewTicker(oneSecond)
+	ticker := time.NewTicker(oneSecond)
 
 	// Begin watching as timers come and go
-	events := make(chan store.Event)
-	t.st.Watch("/j/timer/**", events)
+	t.st.Watch("/j/timer/**", t.events)
 
 	for {
 		select {
-		case e := <-events:
-			log.Stderrf("%v\n", e)
-		case <-tick.C:
-			log.Stderrf("tick!\n")
+		case e := <-t.events:
+			if closed(t.events) {
+				goto done
+			}
+
+			logger.Logf("recvd: %v", e)
+			// TODO: Handle/Log the next error
+			// I'm not sure if we should notify the client
+			// on Set.  That seems like it would be difficult
+			// with the currect way the code functions.  Dunno.
+			at, _ := strconv.Atoi64(e.Body)
+
+			x := Tick{e.Path, at}
+			heap.Push(ticks, x)
+		case <-ticker.C:
+			secs := time.Seconds()
+			logger.Logf("secs (%d)", secs)
+			logger.Logf("peek (%v)", peek())
+			for next := peek() ; next.At <= secs; next = peek() {
+				logger.Logf("ticked %#v", next)
+				heap.Pop(ticks)
+				t.C <- next
+			}
 		}
 	}
+
+done:
+	ticker.Stop()
 }
 
 func (t *Timer) Close() {
-
+	close(t.events)
 }
 
 // Testing
 
+
 func TestOneshotTimer(t *testing.T) {
+	util.LogWriter = os.Stderr
+
 	// Start the timer process
 	st := store.New()
-	tx := New(st)
-	defer tx.Close()
+	timer := New("test", st)
+	defer timer.Close()
 
 	t.Errorf("%d\n", time.Seconds())
 
 	path := "/j/timer/foo/bar"
-	muta := store.MustEncodeSet(path, store.Clobber, "1")
+	muta := store.MustEncodeSet(
+		path,
+		strconv.Itoa64(time.Seconds() + 5),
+		store.Clobber,
+	)
 
 	st.Apply(1, muta)
 
-	t.Errorf("%q", <-tx.C)
+	t.Errorf("%q", <-timer.C)
 	t.Errorf("%d\n", time.Seconds())
 }
