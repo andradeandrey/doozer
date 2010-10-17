@@ -124,7 +124,7 @@ func (sv *Server) ServeUdp(u ReadFromWriteToer, outs chan paxos.Packet) os.Error
 		case pk := <-recvd:
 			if pk.Msg.HasFlags(paxos.Ack) {
 				logger.Logf("got ack %s %v", pk.Addr, pk.Msg)
-				needsAck[pk.Id()] = false
+				needsAck[pk.Id()] = false, false
 			} else {
 				logger.Logf("sending ack %s %v", pk.Addr, pk.Msg)
 				udpAddr, err := net.ResolveUDPAddr(pk.Addr)
