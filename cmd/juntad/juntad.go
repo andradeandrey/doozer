@@ -155,6 +155,11 @@ func main() {
 
 	sv := &server.Server{*listenAddr, st, mg, self, prefix}
 
+	lk, err := lock.New(st, "/lock")
+	if err != nil {
+		panic(err)
+	}
+
 	go func() {
 		panic(mon.Monitor(self, prefix, st, cl))
 	}()
@@ -176,6 +181,9 @@ func main() {
 	for {
 		st.Apply(mg.Recv())
 	}
+
+	// It's over; Stop watching locks
+	lk.Close()
 }
 
 func addPublicAddr(st *store.Store, seqn uint64, self, addr string) uint64 {
