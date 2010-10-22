@@ -8,6 +8,7 @@ bench: bench.pkg
 
 %.pkg:
 	cd pkg/assert && make $*
+	cd pkg/session && make $*
 	cd pkg/util && make $*
 	cd pkg/exec && make $*
 	cd pkg/store && make $*

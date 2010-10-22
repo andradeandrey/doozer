@@ -234,6 +234,10 @@ func (sv *Server) Nop() os.Error {
 	return err
 }
 
+func (sv *Server) Ping(n string) (seqn uint64, err os.Error) {
+	return sv.Set(sv.Prefix+"/session/"+sv.Self, n, store.Clobber)
+}
+
 func (sv *Server) delOnce(path, cas string) (uint64, os.Error) {
 	shortPath, err := sv.checkPath(path)
 	if err != nil {
@@ -434,6 +438,30 @@ func (c *conn) serve() {
 				close(done)
 				seqn, snap := c.s.St.Snapshot()
 				pc.SendResponse(rid, strconv.Uitoa64(seqn), snap)
+			}
+		case "ping":
+			if len(parts) != 2 {
+				rlogger.Logf("invalid nop command: %v", parts)
+				pc.SendError(rid, "wrong number of parts")
+				break
+			}
+
+			leader := c.s.leader()
+			if c.s.Self != leader {
+				rlogger.Logf("redirect to %s", leader)
+				pc.SendRedirect(rid, leader)
+				break
+			}
+
+			rlogger.Log("ping")
+
+			_, err := c.s.Ping(parts[1])
+			if err != nil {
+				rlogger.Logf("bad: %s", err)
+				pc.SendError(rid, err.String())
+			} else {
+				rlogger.Logf("good")
+				pc.SendResponse(rid, "true")
 			}
 		}
 	}

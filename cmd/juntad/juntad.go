@@ -4,14 +4,18 @@ import (
 	"flag"
 	"fmt"
 	"junta/client"
+	"junta/lock"
 	"junta/mon"
 	"junta/paxos"
 	"junta/server"
+	"junta/session"
 	"junta/store"
+	"junta/timer"
 	"junta/util"
 	"junta/web"
 	"net"
 	"os"
+	"time"
 )
 
 const (
@@ -154,6 +158,27 @@ func main() {
 	}
 
 	sv := &server.Server{*listenAddr, st, mg, self, prefix}
+
+	lk := lock.New(st, mg)
+	defer lk.Close()
+
+	ss := session.New(st, mg)
+	defer ss.Close()
+
+	go func() {
+		t := time.NewTicker(timer.OneSecond)
+		for {
+			select {
+			case <-t.C:
+				exp := time.Nanoseconds()+(timer.OneSecond*2)
+				// TODO:  do something with the err is != nil
+				err := cl.Ping(exp)
+				if err != nil {
+					panic(err)
+				}
+			}
+		}
+	}()
 
 	go func() {
 		panic(mon.Monitor(self, prefix, st, cl))

@@ -138,3 +138,9 @@ func (c *Client) Nop() os.Error {
 	_, err := c.call(1, "nop")
 	return err
 }
+
+func (c *Client) Ping(n int64) os.Error {
+	body := strconv.Itoa64(n)
+	_, err := c.call(1, "ping", body)
+	return err
+}
