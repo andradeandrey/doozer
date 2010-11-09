@@ -21,8 +21,14 @@ func encode(w WriteFlusher, a ... interface{}) (err os.Error) {
 	}
 
 	for _, v := range a {
-		s := v.(string)
-		fmt.Fprintf(w, "$%d\r\n%s\r\n", len(s), s)
+		switch v.(type) {
+		case string:
+			s := v.(string)
+			fmt.Fprintf(w, "$%d\r\n%s\r\n", len(s), s)
+		case int:
+			i := v.(int)
+			fmt.Fprintf(w, ":%d\r\n", i)
+		}
 	}
 
 	return w.Flush() 
@@ -32,6 +38,6 @@ func encode(w WriteFlusher, a ... interface{}) (err os.Error) {
 func TestProtoEncode(t *testing.T) {
 	buf := new(bytes.Buffer)
 	w   := bufio.NewWriter(buf)
-	assert.Equal(t, nil, encode(w, "set", "foo", "bar"))
-	assert.Equal(t, "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$3\r\nbar\r\n", buf.String())
+	assert.Equal(t, nil, encode(w, "set", "foo", 1))
+	assert.Equal(t, "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n:1\r\n", buf.String())
 }
