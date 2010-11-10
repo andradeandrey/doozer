@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"junta/assert"
+	"junta/test"
 	"os"
 	"testing"
 )
@@ -36,30 +37,21 @@ func encode(w io.Writer, a ... interface{}) (err os.Error) {
 	return
 }
 
-// An io.Writer that will return os.EOF on the `n`th byte written
-type eWriter struct {
-	n int
-}
-
-func (e *eWriter) Write(p []byte) (n int, err os.Error) {
-	l := len(p)
-	e.n -= l
-	if e.n <= 0 {
-		return 0, os.EOF
-	}
-	return l, nil
-}
-
 func TestProtoEncode(t *testing.T) {
 	buf := new(bytes.Buffer)
 	w   := bufio.NewWriter(buf)
+
+	// One part
 	assert.Equal(t, nil, encode(w, "set", "foo", 1))
+
+	// We need to flush the output before reading
 	w.Flush()
+
 	assert.Equal(t, "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n:1\r\n", buf.String())
 }
 
-func TestProtoEncodeErrors(t *testing.T) {
-	assert.Equal(t, os.EOF, encode(&eWriter{4}))
-	assert.Equal(t, os.EOF, encode(&eWriter{5}, "ping"))
-	assert.Equal(t, os.EOF, encode(&eWriter{5}, 1))
+func TestProtoEncodeReturnsErrors(t *testing.T) {
+	assert.Equal(t, os.EOF, encode(&test.ErrWriter{4}))
+	assert.Equal(t, os.EOF, encode(&test.ErrWriter{5}, "ping"))
+	assert.Equal(t, os.EOF, encode(&test.ErrWriter{5}, 1))
 }
