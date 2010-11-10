@@ -8,26 +8,18 @@ import (
 	"junta/assert"
 	"junta/test"
 	"os"
+	"reflect"
 	"testing"
 )
 
 func encode(w io.Writer, a ... interface{}) (err os.Error) {
-	_, err = fmt.Fprintf(w, "*%d\r\n", len(a))
-	if err != nil {
-		return
-	}
-
 	for _, v := range a {
-		switch v.(type) {
-		case string:
-			s := v.(string)
-			_, err = fmt.Fprintf(w, "$%d\r\n%s\r\n", len(s), s)
-			if err != nil {
-				return
-			}
-		case int:
-			i := v.(int)
-			_, err = fmt.Fprintf(w, ":%d\r\n", i)
+		t := reflect.Typeof(v)
+		switch {
+		// Keith,  I'm trying ot reflect here to keep from using an epic case
+		// statement.  This is where I left off.
+		case reflect.Int <= t.Kind() && t.Kind() <= reflect.Int64:
+			_, err = fmt.Fprintf(w, ":%d\r\n", int64(i))
 			if err != nil {
 				return
 			}
@@ -37,21 +29,59 @@ func encode(w io.Writer, a ... interface{}) (err os.Error) {
 	return
 }
 
-func TestProtoEncode(t *testing.T) {
-	buf := new(bytes.Buffer)
-	w   := bufio.NewWriter(buf)
-
-	// One part
-	assert.Equal(t, nil, encode(w, "set", "foo", 1))
-
-	// We need to flush the output before reading
-	w.Flush()
-
-	assert.Equal(t, "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n:1\r\n", buf.String())
+type encTest struct {
+	data     interface{}
+	expected string
 }
 
+var encTests = []encTest{
+	{int(0), ":0\r\n"},
+	{int8(0), ":0\r\n"},
+	// {int16(0), ":0\r\n"},
+	// {int32(0), ":0\r\n"},
+	// {int64(0), ":0\r\n"},
+	// {uint(0), ":0\r\n"},
+	// {uint8(0), ":0\r\n"}, // aka byte
+	// {uint16(0), ":0\r\n"},
+	// {uint32(0), ":0\r\n"},
+	// {uint64(0), ":0\r\n"},
+
+	// {[]byte{'f', 'o', 'o'}, "$3\r\nfoo\r\n"},
+	// {"foo", "$3\r\nfoo\r\n"},
+	// {Line("hi"), "+hi\r\n"},
+	// {os.NewError("hi"), "-hi\r\n"},
+	// {nil, "$-1\r\n"},
+	// {[]interface{}{[]byte{'a'}, []byte{'b'}}, "*2\r\n$1\r\na\r\n$1\r\nb\r\n"},
+	// {[]string{"GET", "FOO"}, "*2\r\n$3\r\nGET\r\n$3\r\nFOO\r\n"},
+	// {[]interface{}{1, []interface{}{1}}, "*2\r\n:1\r\n*1\r\n:1\r\n"},
+}
+
+func TestProtoEncode(t *testing.T) {
+	for _, e := range encTests {
+		b := new(bytes.Buffer)
+		w := bufio.NewWriter(b)
+
+		err := encode(w, e.data)
+		if err != nil {
+			t.Errorf("unexpected err: %s", err)
+			continue
+		}
+
+		w.Flush()
+
+		if e.expected != string(b.Bytes()) {
+			t.Errorf("expected %q", e.expected)
+			t.Errorf("     got %q", string(b.Bytes()))
+		}
+	}
+}
+
+var (
+	FastErr = &test.ErrWriter{1}
+)
+
 func TestProtoEncodeReturnsErrors(t *testing.T) {
-	assert.Equal(t, os.EOF, encode(&test.ErrWriter{4}))
-	assert.Equal(t, os.EOF, encode(&test.ErrWriter{5}, "ping"))
-	assert.Equal(t, os.EOF, encode(&test.ErrWriter{5}, 1))
+	assert.Equal(t, os.EOF, encode(FastErr, "set", "foo"))
+	assert.Equal(t, os.EOF, encode(FastErr, "ping"))
+	assert.Equal(t, os.EOF, encode(FastErr, 1))
 }
