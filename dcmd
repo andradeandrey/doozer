@@ -5,7 +5,20 @@ encstr() {
 }
 
 encstrs() {
-  printf '*%d\r\n' $#
+  # Count OPID as a part
+  n=$(expr $# + 1)
+
+  # Send part count
+  printf '*%d\r\n' $n
+
+  # Send the VERB first
+  encstr "$1"
+  shift
+
+  # Send the OPID
+  printf ':1\r\n'
+
+  # Send remaining arguments
   for x in "$@"
   do
     encstr "$x"
