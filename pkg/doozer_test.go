@@ -19,9 +19,13 @@ func mustListen() net.Listener {
 func TestFoo(t *testing.T) {
 	l := mustListen()
 	a0 := l.Addr().String()
-	go Main("a", "", l, nil)
-	go Main("a", a0, mustListen(), nil)
-	go Main("a", a0, mustListen(), nil)
+
+	done := make(chan int)
+	defer close(done)
+
+	go Main("a", "", l, nil, done)
+	go Main("a", a0, mustListen(), nil, done)
+	go Main("a", a0, mustListen(), nil, done)
 
 	cl, err := client.Dial(a0)
 	if err != nil {

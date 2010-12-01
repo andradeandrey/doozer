@@ -22,7 +22,7 @@ const (
 	pulseInterval   = 1e9
 )
 
-func Main(clusterName, attachAddr string, listener, webListener net.Listener) {
+func Main(clusterName, attachAddr string, listener, webListener net.Listener, done chan int) {
 	logger := util.NewLogger("main")
 
 	var err os.Error
@@ -131,7 +131,11 @@ func Main(clusterName, attachAddr string, listener, webListener net.Listener) {
 		go web.Serve(webListener)
 	}
 
-	panic(sv.ListenAndServeUdp(outs))
+	go func() {
+		panic(sv.ListenAndServeUdp(outs))
+	}()
+
+	<-done
 }
 
 func activate(st *store.Store, self string, c *client.Client, cal chan int) {
